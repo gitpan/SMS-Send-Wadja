@@ -1,0 +1,5 @@
+# This file documents the revision history for Perl extension SMS::Send::Wadja.
+
+0.01 2009-05-10
+    - First version. Wadja's API is still broken. Expect a new version
+      after they fix it.
