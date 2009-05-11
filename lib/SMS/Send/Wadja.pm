@@ -16,10 +16,11 @@ Version 0.01
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 
 =head1 SYNOPSIS
+
     use SMS::Send;
 
     my $sender = SMS::Send->new('Wadja',
@@ -27,9 +28,9 @@ our $VERSION = '0.01';
     );
 
     my $sent = $sender->send_sms(
-        to        => '+40-722-123456',    # list of recipients (comma separated) e.g.. 3069xxxxxxxx, 35799xxxxxx
+        to        => '+40-722-123456',    # recipient
         text      => "Hello, world!",     # the text of the message to send
-        _from     => 'me@mydomain.com',   # optional from address
+        _from     => 'me@mydomain.com',   # optional "from" address
     );
 
     # Did it send to Wadja OK?
@@ -52,8 +53,8 @@ spend time implementing the screen scraping method.
 
 I've seen Wadja deliver text messages successfully to the UK (Vodaphone),
 Germany (T-Mobile (D1) and Vodafone), Philippines (Global Telecom),
-Poland (Orange), Romania (Orange), and Russia (BeeLine), but not to the US
-(AT&T Wireless), despite the official coverage claim at
+Poland (Orange, Polkomtel), Romania (Orange), and Russia (BeeLine), but not to
+the US (AT&T Wireless), despite the official coverage claim at
 L<http://us.wadja.com/applications/compose/coverage.aspx>. However, Wadja
 provides a delivery status function (which happens to be currently broken via
 their API (see L<http://us.wadja.com/applications/forum/replies.aspx?id=643>)
@@ -100,12 +101,12 @@ sub new {
 
 =head2 send_sms
 
-This method is actually called by SMS::Send when you call send_sms on it.
+This method is actually called by L<SMS::Send> when you call send_sms on it.
 
     my $sent = $sender->send_sms(
         text => 'Messages have a limit of 90 chars',
         to   => '+44-1234567890',
-        _from => 'custom From string'  # doesn't work in the Free SMS API
+        _from => 'custom From string'  # works only in the SMS Plus API
     );
 
 Unicode messages appear to be handled correctly and are still limited to 90
@@ -208,12 +209,13 @@ sub delivery_status {
 Wadja's API lets you send a text message to multiple recipients at once, by
 delimiting the phone numbers with commas. However, SMS::Send strips commas from
 the "to" parameter, which will obviously break things. I filed a bug against
-SMS::Send at <https://rt.cpan.org/Ticket/Display.html?id=45868>.
+SMS::Send at L<https://rt.cpan.org/Ticket/Display.html?id=45868>.
 
 Wadja's API claims to return a "batchID" that would help track delivery statuses
 but doesn't actually do so. I filed a bug for that at
-L<http://us.wadja.com/applications/forum/replies.aspx?id=643>. The official
-coverage claim is at L<http://us.wadja.com/applications/compose/coverage.aspx>
+L<http://us.wadja.com/applications/forum/replies.aspx?id=643>.
+
+The official coverage claim is at L<http://us.wadja.com/applications/compose/coverage.aspx>
 but beware that I could not send text messages successfully to AT&T Wireless in
 the US despite what the coverage claims.
 

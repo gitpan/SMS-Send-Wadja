@@ -9,8 +9,8 @@ SYNOPSIS
     );
 
     my $sent = $sender->send_sms(
-        to        => '+40-722-123456',    # list of recipients (comma separated) e.g.. 3069xxxxxxxx, 35799xxxxxx
-        text      => "Hello, world!",     # the text of the message to send
+        to        => '+40-722-123456',  # recipient
+        text      => "Hello, world!",   # the text of the message to send
     );
 
     # Did it send to Wadja OK?
