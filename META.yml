@@ -1,5 +1,5 @@
 ---
-abstract: 'Non-regional L<SMS::Send> driver for the L<http://wadja.com>'
+abstract: "Non-regional SMS::Send driver for Wadja.com's free global SMS API"
 author:
   - 'Dan Dascalescu <dandv@cpan.org>'
 build_requires:
@@ -24,4 +24,4 @@ requires:
   SMS::Send::Driver: 0
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.02
+version: 0.03
