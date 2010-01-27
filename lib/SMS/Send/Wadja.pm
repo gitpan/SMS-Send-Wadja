@@ -12,11 +12,11 @@ free global SMS service, using their API.
 
 =head1 VERSION
 
-Version 0.03
+Version 1.0
 
 =cut
 
-our $VERSION = '0.03';
+our $VERSION = '1.0';
 
 
 =head1 SYNOPSIS
@@ -91,11 +91,15 @@ sub new {
     my $class  = shift;
     my $opts = {
         _send_via => 'api',
-        _api_sms_url => 'http://sms.wadja.com/partners/sms/default.aspx',
-        _api_delivery_url => 'http://sms.wadja.com/partners/sms/dlr.aspx',
+        _api_sms_url => 'http://www.wadja.com/partners/sms/default.aspx',
+        _api_delivery_url => 'http://www.wadja.com/partners/sms/dlr.aspx',
         @_
     };
-    $opts->{_ua} ||= LWP::UserAgent->new;
+    $opts->{_ua} ||= LWP::UserAgent->new(
+        # on 2010-01-26, Wadja changed its API URL and started issuing a '301 Moved Permanently'
+        # response to our 'POST' request. By default, LWP::UserAgent::requests_redirectable excluded 'POST'.
+        requests_redirectable => ['GET', 'HEAD', 'POST']
+    );
     return bless $opts, $class;
 }
 
@@ -111,6 +115,11 @@ This method is actually called by L<SMS::Send> when you call send_sms on it.
 
 Unicode messages appear to be handled correctly and are still limited to 90
 characters.
+
+Returns a hashref with the following keys:
+
+    price
+    batchID - used for tracking the delivery status
 
 =cut
 
@@ -138,16 +147,14 @@ sub send_sms {
         }
         $self->{_wadja_response} = \%wadja_response;
 
-        if ($wadja_response{batch_id}) {
-            # Wadja hasn't fixed this yet. As of 2009-05-10, there is no batchID.
+        if ($wadja_response{batchID}) {
             return \%wadja_response;
         } else {
             # request went through but message not accepted
             if ($wadja_response{ERROR}) {
                 Carp::carp "SMS message not sent -- Wadja ERROR: $wadja_response{ERROR}";
             } elsif (%wadja_response) {
-                # Wadja did not return a batchID, but there was no error. This indicates
-                # success, but is a bug. See http://www.wadja.com/applications/forum/replies.aspx?id=643
+                # Wadja did not return a batchID, but there was no error. This indicates success, but is a bug.
                 return \%wadja_response;
             } else {
                 Carp::carp q{SMS message not sent -- Wadja returned '} . $self->{_raw_response} . q{'};
@@ -168,38 +175,92 @@ sub send_sms {
     # Get the delivery status of the last message we sent
     my $status = $sender->delivery_status;
 
-    # Get the delivery status for an arbitrary message we sent in the past
-    # (pass it the return value of the send_sms method)
+    # Get the delivery status for an arbitrary message we sent in the past,
+    # based on an anonymous hashref with a 'batchID' key
+    my $sent = $sender->send_sms(...);
     my $status = $sender->delivery_status($sent);
+    
+    # Or just pass a {batchID => nnn}
+    my $batchID = 2180419;
+    my $status = $sender->delivery_status({batchID => $batchID});
+
+    if ($status->{error}) {
+        print "Can't check delivery: ", $status->{error}, "\n";
+    } else {
+        print "Delivery status of " . $batchID . ": ", $status->{status}, ' at ', $status->{completed};
+    }
 
 If called with no parameters then the most recent message sent out is checked.
-You can also provide the return value of the L<send_sms> method as a parameter
-to check the delivery status for other messages.
+You can also provide an anoynmous hash with a batchID key set to the value of the
+batchID returned by a previous L</send_sms> call.
 
-B<NOTE:> Currently this doesn't work for Wadja because the API doesn't return a
-"batchID" that would be used to track deliveries. I reported this bug at
-L<http://www.wadja.com/applications/forum/replies.aspx?id=643>.
+Returns a hashref, of which the 'status' key indicates:
+
+    DELIVRD Delivered to destination
+    ACCEPTD Accepted by network operator
+    EXPIRED Validity period has expired
+    UNDELIV Message is undeliverable
+    UNKNOWN Message is in unknown state
+    REJECTD Message is in rejected state
 
 =cut
 
+sub _wadja2DateTime {
+    my ($wadja_date) = @_;
+    my ($yy, $mm, $dd, $hh, $min) = $wadja_date =~ /(\d{2})/g;
+    return DateTime->new(
+        year => $yy+2000,
+        month => $mm,
+        day => $dd,
+        hour => $hh,
+        minute => $min,
+        time_zone => '+0100',  # neither UTC, nor Europe/Athens (unless Wadja's server doesn't follow DST)
+    );
+}
+
 sub delivery_status {
+    require DateTime;
     my $self           = shift;
     my $wadja_response = shift || $self->{_wadja_response}
         or Carp::croak 'No message available for checking delivery_status';
-    my $batch_id = $wadja_response->{batch_id}
+    my $batch_id = $wadja_response->{batchID}
         or Carp::croak 'No batch ID in the Wadja response';
     defined $self->{_ua}
-        or Carp::croak 'Run send_sms before checking delivery_status';
+        or Carp::croak 'UserAgent not initialized';
 
     my $request_URL = URI->new($self->{_api_delivery_url});
     $request_URL->query_form(
         key => $self->{_key},
-        bit => $batch_id
+        bid => $batch_id
     );
     my $response = $self->{_ua}->get($request_URL);
 
     if (defined $response and $response->is_success) {
-        return $response->content;
+        # A response may look like:
+        # [40746057225: id:40012700460178067 sub:001 dlvrd:001 submit date:1001270046 done date:1001270046 stat:DELIVRD err:000 text:First 19 chars of t]
+
+        my $content = $response->content or return {error => "No response"};
+        
+        my ($response_id, $id, $sub, $delivered, $submit_date, $done_date, $status, $error) = $response->content =~
+            /(\d+): \s+ id: (\S+) \s+ sub: (\S+) \s+ dlvrd: (\S+) \s+ submit\ date: (\S+) \s+ done\ date: (\S+) \s+ stat: (\S+) \s+ err: (\S+)/x;
+
+        return {error => "Wadja error. Make sure the API key is the same as the one used for batchID $batch_id. Error message was: $content"}
+            if not $response_id;
+        return {error => "No delivery status available yet. Try again later"}
+            if not $id;  # happens if you request delivery status right after sending the SMS
+
+        $submit_date = _wadja2DateTime($submit_date);
+        $done_date = _wadja2DateTime($done_date);
+        $submit_date->set_time_zone('local');
+        $done_date->set_time_zone('local');
+
+        return {
+            delivered => $delivered + 0,
+            submitted => $submit_date,
+            completed => $done_date,
+            status => $status,
+            error => $error + 0
+        }
     }
     return;
 }
@@ -209,11 +270,7 @@ sub delivery_status {
 Wadja's API lets you send a text message to multiple recipients at once, by
 delimiting the phone numbers with commas. However, SMS::Send strips commas from
 the "to" parameter, which will obviously break things. I filed a bug against
-SMS::Send at L<https://rt.cpan.org/Ticket/Display.html?id=45868>.
-
-Wadja's API claims to return a "batchID" that would help track delivery statuses
-but doesn't actually do so. I filed a bug for that at
-L<http://us.wadja.com/applications/forum/replies.aspx?id=643>.
+SMS::Send at L<http://rt.cpan.org/Ticket/Display.html?id=45868>.
 
 The official coverage claim is at L<http://us.wadja.com/applications/compose/coverage.aspx>
 but beware that I could not send text messages successfully to AT&T Wireless in
@@ -232,13 +289,15 @@ Dan Dascalescu, L<http://dandascalescu.com>
 
 Thanks to Adam Kennedy E<lt>adamk@cpan.orgE<gt>, L<http://ali.as/> for writing
 SMS::Send. The Wadja API is described at
-L<http://www.wadja.com/api/docs/SMS_HTTP_API.pdf>.
+L<http://www.wadja.com/api/docs/SMS_HTTP_API.pdf> (as of 2010-01-25, the base
+URLs are wrong. s/sms/www/g.
 
 Many thanks to my friends worldwide for assisting with QA.
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (C) 2009 Dan Dascalescu, L<http://dandascalescu.com>. All rights reserved.
+Copyright (C) 2009-2010 Dan Dascalescu, L<http://dandascalescu.com>. All rights
+reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the same terms as Perl itself.

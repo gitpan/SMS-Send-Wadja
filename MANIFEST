@@ -12,10 +12,10 @@ inc/Module/Install/Win32.pm
 inc/Module/Install/WriteAll.pm
 lib/SMS/Send/Wadja.pm
 Makefile.PL
-MANIFEST
+MANIFEST			This list of files
 META.yml
 README
 t/00-load.t
+t/boilerplate.t
 t/pod-coverage.t
 t/pod.t
-TODO
