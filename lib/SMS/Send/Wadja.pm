@@ -16,7 +16,7 @@ Version 1.0
 
 =cut
 
-our $VERSION = '1.0';
+our $VERSION = '1.01';
 
 
 =head1 SYNOPSIS
@@ -238,11 +238,13 @@ sub delivery_status {
     if (defined $response and $response->is_success) {
         # A response may look like:
         # [40746057225: id:40012700460178067 sub:001 dlvrd:001 submit date:1001270046 done date:1001270046 stat:DELIVRD err:000 text:First 19 chars of t]
+        # or, if no delivery information is available just yet, like:
+        # [447536736704: ]
 
         my $content = $response->content or return {error => "No response"};
         
-        my ($response_id, $id, $sub, $delivered, $submit_date, $done_date, $status, $error) = $response->content =~
-            /(\d+): \s+ id: (\S+) \s+ sub: (\S+) \s+ dlvrd: (\S+) \s+ submit\ date: (\S+) \s+ done\ date: (\S+) \s+ stat: (\S+) \s+ err: (\S+)/x;
+        my ($response_id, $id, $sub, $delivered, $submit_date, $done_date, $status, $error) = $content =~
+            /(\d+): \s+ (?: id: (\S+) \s+ sub: (\S+) \s+ dlvrd: (\S+) \s+ submit\ date: (\S+) \s+ done\ date: (\S+) \s+ stat: (\S+) \s+ err: (\S+) )?/x;
 
         return {error => "Wadja error. Make sure the API key is the same as the one used for batchID $batch_id. Error message was: $content"}
             if not $response_id;
